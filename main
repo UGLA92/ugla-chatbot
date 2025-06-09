@@ -1,0 +1,54 @@
+import gradio as gr
+import openai
+import faiss
+import numpy as np
+from sentence_transformers import SentenceTransformer
+
+openai.api_key = "sk-..."  # Remplace ici par ta vraie clé OpenAI
+
+with open("mathieu_chunks.txt", "r", encoding="utf-8") as f:
+    chunks = [chunk.strip() for chunk in f.read().split("\n---\n") if chunk.strip()]
+
+with open("style_mathieu.txt", "r", encoding="utf-8") as f:
+    style_mathieu = f.read().strip()
+
+index = faiss.read_index("mathieu_index.faiss")
+encoder = SentenceTransformer("all-MiniLM-L6-v2")
+
+INSTRUCTION = """Tu es UGLA...
+
+(Tu colles ici le reste de ton prompt actuel)
+"""
+
+def chat_with_ugla(message, history=None):
+    if history is None:
+        history = []
+
+    query_vector = encoder.encode([message])
+    D, I = index.search(np.array(query_vector), k=6)
+    similar_chunks = "\n\n".join([chunks[i] for i in I[0] if i < len(chunks)])
+
+    full_prompt = (
+        INSTRUCTION
+        + "\n\nVoici ton style :\n" + style_mathieu
+        + "\n\nEt ce que tu as déjà dit :\n" + similar_chunks
+        + f"\n\nHumain : {message}\nUGLA :"
+    )
+
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": full_prompt}],
+        temperature=0.9,
+        max_tokens=200
+    )
+
+    return response.choices[0].message.content.strip()
+
+interface = gr.Interface(
+    fn=chat_with_ugla,
+    inputs="text",
+    outputs="text",
+    title="UGLA - Le chatbot à la voix bien trempée",
+)
+
+interface.launch(auth=("ugla", "chat2024"))
